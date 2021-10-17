@@ -83,18 +83,26 @@ func main() {
 			// import * as constants from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
 			// export { constants };
 			export const hello = 'world';
-			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
-			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/9c8236635cbe9d6cc30fab2c1074ec169aea5c0b/generators.js'
+			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/0003a973c63dfc78bbc595d5d3b7891b89a1b829/constants.js'
+			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/0003a973c63dfc78bbc595d5d3b7891b89a1b829/interpolation.js'
+			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/0003a973c63dfc78bbc595d5d3b7891b89a1b829/generators.js'
 			// export const pi = Math.PI;
 			`
 		} else if r.Method == "POST" {
+			defer r.Body.Close()
 			if b, err := io.ReadAll(r.Body); err == nil {
 				source = string(b)
 			}
-			r.Body.Close()
+		} else if r.URL.Path == "/react@17.0.2" {
+			source = `
+			export * from "https://cdn.jsdelivr.net/npm/react@17.0.2/umd/react.production.min.js";
+			//export * from "https://cdn.jsdelivr.net/npm/react-dom@17.0.2/umd/react-dom.production.min.js";
+			`
 		} else {
 			source = r.URL.Query().Get("source")
 		}
+
+		var minify = r.URL.Query().Has("minify")
 
 		result := api.Build(api.BuildOptions{
 			Stdin: &api.StdinOptions{
@@ -104,16 +112,17 @@ func main() {
 				Sourcefile: "imaginary-file.js",
 				Loader:     api.LoaderJS,
 			},
-			Format:  api.FormatESModule,
-			Bundle:  true,
-			Plugins: []api.Plugin{httpPlugin},
-			Write:   false,
+			Format:            api.FormatESModule,
+			Bundle:            true,
+			Plugins:           []api.Plugin{httpPlugin},
+			Write:             false,
+			MinifyWhitespace:  minify,
+			MinifyIdentifiers: minify,
+			MinifySyntax:      minify,
 		})
 
 		if len(result.Errors) > 0 {
-			w.Header().Add("Content-Type", "text/plain;charset=UTF-8")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(result.Errors[0].Text))
+			http.Error(w, result.Errors[0].Text, http.StatusInternalServerError)
 			return
 		}
 
