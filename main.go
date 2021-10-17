@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -57,7 +57,7 @@ var httpPlugin = api.Plugin{
 					return api.OnLoadResult{}, err
 				}
 				defer res.Body.Close()
-				bytes, err := ioutil.ReadAll(res.Body)
+				bytes, err := io.ReadAll(res.Body)
 				if err != nil {
 					return api.OnLoadResult{}, err
 				}
@@ -76,26 +76,36 @@ func main() {
 	// region := os.Getenv("FLY_REGION")
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		var source = ""
+		if r.URL.Path == "/health" {
+			source = `
+			// export * from './another-file'
+			// import * as constants from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
+			// export { constants };
+			export const hello = 'world';
+			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
+			export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/9c8236635cbe9d6cc30fab2c1074ec169aea5c0b/generators.js'
+			// export const pi = Math.PI;
+			`
+		} else if r.Method == "POST" {
+			if b, err := io.ReadAll(r.Body); err == nil {
+				source = string(b)
+			}
+			r.Body.Close()
+		} else {
+			source = r.URL.Query().Get("source")
+		}
+
 		result := api.Build(api.BuildOptions{
 			Stdin: &api.StdinOptions{
-				Contents: `
-				// export * from './another-file'
-				// import * as constants from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
-				// export { constants };
-				export * from 'https://raw.githubusercontent.com/RoyalIcing/modules/main/constants.js'
-				// export const pi = Math.PI;
-				`,
-
+				Contents: source,
 				// These are all optional:
 				ResolveDir: "./src",
 				Sourcefile: "imaginary-file.js",
 				Loader:     api.LoaderJS,
 			},
-			Format: api.FormatESModule,
-
-			// EntryPoints: []string{"app.js"},
-			Bundle: true,
-			// Outfile:     "out.js",
+			Format:  api.FormatESModule,
+			Bundle:  true,
 			Plugins: []api.Plugin{httpPlugin},
 			Write:   false,
 		})
